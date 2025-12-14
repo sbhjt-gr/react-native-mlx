@@ -1,7 +1,7 @@
 {
-  "name": "react-native-nitro-mlx",
-  "version": "0.2.0",
-  "description": "Nitro module package",
+  "name": "@inferrlm/react-native-mlx",
+  "version": "0.2.0-inferrlm.1",
+  "description": "MLX Swift integration for React Native - InferrLM fork with enhanced features",
   "main": "./lib/module/index.js",
   "module": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -18,14 +18,18 @@
   "keywords": [
     "react-native",
     "nitro",
-    "nitro-modile",
+    "nitro-module",
     "expo",
     "llm",
     "mlx",
     "mlx-swift",
     "apple",
-    "react-native-nitro-mlx",
-    "ai"
+    "apple-silicon",
+    "react-native-mlx",
+    "ai",
+    "on-device-ai",
+    "inferrlm",
+    "ios"
   ],
   "files": [
     "src",
@@ -48,14 +52,18 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/corasan/react-native-nitro-mlx.git"
+    "url": "git+https://github.com/sbhjt-gr/react-native-nitro-mlx.git"
   },
-  "author": "Henry Paulino",
+  "author": "Subhajit Ghosh <sbhjt.gr@gmail.com>",
+  "contributors": [
+    "Henry Paulino <me@henrypl.com> (original author)"
+  ],
   "license": "MIT",
-  "bugs": "https://github.com/corasan/react-native-nitro-mlx/issues",
-  "homepage": "https://github.com/corasan/react-native-nitro-mlx#readme",
+  "bugs": "https://github.com/sbhjt-gr/react-native-nitro-mlx/issues",
+  "homepage": "https://github.com/sbhjt-gr/react-native-nitro-mlx#readme",
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "devDependencies": {
     "@expo/config-plugins": "^9.0.10",
