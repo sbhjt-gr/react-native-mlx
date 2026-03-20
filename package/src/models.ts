@@ -53,6 +53,10 @@ export enum MLXModel {
   Qwen3_1_7B_4bit = 'mlx-community/Qwen3-1.7B-4bit',
   Qwen3_1_7B_8bit = 'mlx-community/Qwen3-1.7B-8bit',
 
+  // Qwen 3.5 - 0.8B variant
+  Qwen3_5_0_8B_MLX_4bit = 'mlx-community/Qwen3.5-0.8B-MLX-4bit',
+  Qwen3_5_0_8B_MLX_8bit = 'mlx-community/Qwen3.5-0.8B-MLX-8bit',
+
   // Gemma 3 (Google) - 1B variant
   Gemma_3_1B_IT_4bit = 'mlx-community/gemma-3-1b-it-4bit',
   Gemma_3_1B_IT_8bit = 'mlx-community/gemma-3-1b-it-8bit',
@@ -207,6 +211,26 @@ export const MLXModels: ModelInfo[] = [
     quantization: '8bit',
     displayName: 'Qwen 3 1.7B (8-bit)',
     downloadSize: 1839729195,
+    type: 'llm',
+  },
+  {
+    id: MLXModel.Qwen3_5_0_8B_MLX_4bit,
+    family: ModelFamily.Qwen,
+    provider: ModelProvider.Alibaba,
+    parameters: '0.8B',
+    quantization: '4bit',
+    displayName: 'Qwen 3.5 0.8B (4-bit)',
+    downloadSize: 550000000,
+    type: 'llm',
+  },
+  {
+    id: MLXModel.Qwen3_5_0_8B_MLX_8bit,
+    family: ModelFamily.Qwen,
+    provider: ModelProvider.Alibaba,
+    parameters: '0.8B',
+    quantization: '8bit',
+    displayName: 'Qwen 3.5 0.8B (8-bit)',
+    downloadSize: 950000000,
     type: 'llm',
   },
   {
