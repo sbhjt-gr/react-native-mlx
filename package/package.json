@@ -1,7 +1,7 @@
 {
   "name": "@inferrlm/react-native-mlx",
-  "version": "0.2.0-inferrlm.1",
   "description": "MLX Swift integration for React Native - InferrLM fork with enhanced features",
+  "version": "0.4.0",
   "main": "./lib/module/index.js",
   "module": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -76,20 +76,22 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-nitro-modules": "*"
+    "react-native-nitro-modules": "*",
+    "zod": ">=4.0.0"
+  },
+  "dependencies": {
+    "zod": "^4.3.5"
   },
   "release-it": {
-    "npm": {
-      "publish": true,
-      "skipVersion": true
-    },
+    "npm": false,
     "github": {
       "release": true,
       "releaseName": "v${version}"
     },
     "hooks": {
       "after:bump": "bun specs",
-      "before:release": "bun run build"
+      "before:release": "bun run build",
+      "after:release": "npm publish --ignore-scripts"
     },
     "git": {
       "commitMessage": "chore: release ${version}",
@@ -97,6 +99,9 @@
       "requireCleanWorkingDir": false
     },
     "plugins": {
+      "@release-it/bumper": {
+        "out": "package.json"
+      },
       "@release-it/conventional-changelog": {
         "preset": {
           "name": "conventionalcommits",

@@ -1,22 +1,107 @@
-import type { HybridObject } from 'react-native-nitro-modules'
+import type { AnyMap, HybridObject } from 'react-native-nitro-modules'
 
 /**
  * Statistics from the last text generation.
  */
 export interface GenerationStats {
-  /** Total number of tokens generated */
   tokenCount: number
-  /** Generation speed in tokens per second */
   tokensPerSecond: number
-  /** Time in milliseconds until the first token was generated */
   timeToFirstToken: number
-  /** Total generation time in milliseconds */
   totalTime: number
+  toolExecutionTime: number
 }
+
+export interface GenerationStartEvent {
+  type: 'generation_start'
+  timestamp: number
+}
+
+export interface TokenEvent {
+  type: 'token'
+  token: string
+}
+
+export interface ThinkingStartEvent {
+  type: 'thinking_start'
+  timestamp: number
+}
+
+export interface ThinkingChunkEvent {
+  type: 'thinking_chunk'
+  chunk: string
+}
+
+export interface ThinkingEndEvent {
+  type: 'thinking_end'
+  content: string
+  timestamp: number
+}
+
+export interface ToolCallStartEvent {
+  type: 'tool_call_start'
+  id: string
+  name: string
+  arguments: string
+}
+
+export interface ToolCallExecutingEvent {
+  type: 'tool_call_executing'
+  id: string
+}
+
+export interface ToolCallCompletedEvent {
+  type: 'tool_call_completed'
+  id: string
+  result: string
+}
+
+export interface ToolCallFailedEvent {
+  type: 'tool_call_failed'
+  id: string
+  error: string
+}
+
+export interface GenerationEndEvent {
+  type: 'generation_end'
+  content: string
+  stats: GenerationStats
+}
+
+export type StreamEvent =
+  | GenerationStartEvent
+  | TokenEvent
+  | ThinkingStartEvent
+  | ThinkingChunkEvent
+  | ThinkingEndEvent
+  | ToolCallStartEvent
+  | ToolCallExecutingEvent
+  | ToolCallCompletedEvent
+  | ToolCallFailedEvent
+  | GenerationEndEvent
 
 export interface LLMMessage {
   role: string
   content: string
+}
+
+/**
+ * Parameter definition for a tool.
+ */
+export interface ToolParameter {
+  name: string
+  type: string
+  description: string
+  required: boolean
+}
+
+/**
+ * Tool definition that can be called by the model.
+ */
+export interface ToolDefinition {
+  name: string
+  description: string
+  parameters: ToolParameter[]
+  handler: (args: AnyMap) => Promise<AnyMap>
 }
 
 /** Options for loading a model.
@@ -28,6 +113,8 @@ export interface LLMLoadOptions {
   additionalContext?: LLMMessage[]
   /** Whether to automatically manage message history */
   manageHistory?: boolean
+  /** Tools available for the model to call */
+  tools?: ToolDefinition[]
 }
 
 /**
@@ -50,12 +137,23 @@ export interface LLM extends HybridObject<{ ios: 'swift' }> {
   generate(prompt: string): Promise<string>
 
   /**
-   * Stream a response token by token.
+   * Stream a response token by token with optional tool calling support.
+   * Tools are automatically executed when the model calls them.
    * @param prompt - The input text to generate a response for
    * @param onToken - Callback invoked for each generated token
+   * @param onToolCall - Optional callback invoked when a tool is called (for UI feedback)
    * @returns The complete generated text
    */
-  stream(prompt: string, onToken: (token: string) => void): Promise<string>
+  stream(
+    prompt: string,
+    onToken: (token: string) => void,
+    onToolCall?: (toolName: string, args: string) => void,
+  ): Promise<string>
+
+  streamWithEvents(
+    prompt: string,
+    onEvent: (eventJson: string) => void,
+  ): Promise<string>
 
   /**
    * Stop the current generation.
@@ -96,3 +194,9 @@ export interface LLM extends HybridObject<{ ios: 'swift' }> {
   /** System prompt used when loading the model */
   systemPrompt: string
 }
+
+/**
+ * Supported parameter types for tool definitions.
+ * Used for type safety in createTool().
+ */
+export type ToolParameterType = 'string' | 'number' | 'boolean' | 'array' | 'object'
