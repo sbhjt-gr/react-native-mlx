@@ -29,8 +29,8 @@ class HybridLLM: HybridLLMSpec {
     var modelId: String = ""
     var debug: Bool = false
     var systemPrompt: String = "You are a helpful assistant."
-    var maxTokens: Int = 2048
-    var temperature: Float = 0.7
+    var maxTokens: Double = 2048
+    var temperature: Double = 0.7
     var enableThinking: Bool = true
     var additionalContext: LLMMessage = LLMMessage()
     private var lastInputContainedThinkTag = false
@@ -554,7 +554,7 @@ class HybridLLM: HybridLLMSpec {
         }
 
         let stream = try await container.perform { context in
-            let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
+            let parameters = GenerateParameters(maxTokens: Int(self.maxTokens), temperature: Float(self.temperature))
             return try MLXLMCommon.generate(
                 input: lmInput,
                 parameters: parameters,
@@ -762,7 +762,7 @@ class HybridLLM: HybridLLMSpec {
         }
 
         let stream = try await container.perform { context in
-            let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
+            let parameters = GenerateParameters(maxTokens: Int(self.maxTokens), temperature: Float(self.temperature))
             return try MLXLMCommon.generate(
                 input: lmInput,
                 parameters: parameters,
