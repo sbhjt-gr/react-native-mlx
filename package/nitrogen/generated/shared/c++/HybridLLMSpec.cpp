@@ -21,6 +21,12 @@ namespace margelo::nitro::mlxreactnative {
       prototype.registerHybridSetter("debug", &HybridLLMSpec::setDebug);
       prototype.registerHybridGetter("systemPrompt", &HybridLLMSpec::getSystemPrompt);
       prototype.registerHybridSetter("systemPrompt", &HybridLLMSpec::setSystemPrompt);
+      prototype.registerHybridGetter("maxTokens", &HybridLLMSpec::getMaxTokens);
+      prototype.registerHybridSetter("maxTokens", &HybridLLMSpec::setMaxTokens);
+      prototype.registerHybridGetter("temperature", &HybridLLMSpec::getTemperature);
+      prototype.registerHybridSetter("temperature", &HybridLLMSpec::setTemperature);
+      prototype.registerHybridGetter("enableThinking", &HybridLLMSpec::getEnableThinking);
+      prototype.registerHybridSetter("enableThinking", &HybridLLMSpec::setEnableThinking);
       prototype.registerHybridMethod("load", &HybridLLMSpec::load);
       prototype.registerHybridMethod("generate", &HybridLLMSpec::generate);
       prototype.registerHybridMethod("stream", &HybridLLMSpec::stream);

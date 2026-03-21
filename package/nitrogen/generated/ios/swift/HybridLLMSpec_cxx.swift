@@ -156,6 +156,39 @@ open class HybridLLMSpec_cxx {
       self.__implementation.systemPrompt = String(newValue)
     }
   }
+  
+  public final var maxTokens: Double {
+    @inline(__always)
+    get {
+      return self.__implementation.maxTokens
+    }
+    @inline(__always)
+    set {
+      self.__implementation.maxTokens = newValue
+    }
+  }
+  
+  public final var temperature: Double {
+    @inline(__always)
+    get {
+      return self.__implementation.temperature
+    }
+    @inline(__always)
+    set {
+      self.__implementation.temperature = newValue
+    }
+  }
+  
+  public final var enableThinking: Bool {
+    @inline(__always)
+    get {
+      return self.__implementation.enableThinking
+    }
+    @inline(__always)
+    set {
+      self.__implementation.enableThinking = newValue
+    }
+  }
 
   // Methods
   @inline(__always)

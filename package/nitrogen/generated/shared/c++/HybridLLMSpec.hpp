@@ -63,6 +63,12 @@ namespace margelo::nitro::mlxreactnative {
       virtual void setDebug(bool debug) = 0;
       virtual std::string getSystemPrompt() = 0;
       virtual void setSystemPrompt(const std::string& systemPrompt) = 0;
+      virtual double getMaxTokens() = 0;
+      virtual void setMaxTokens(double maxTokens) = 0;
+      virtual double getTemperature() = 0;
+      virtual void setTemperature(double temperature) = 0;
+      virtual bool getEnableThinking() = 0;
+      virtual void setEnableThinking(bool enableThinking) = 0;
 
     public:
       // Methods

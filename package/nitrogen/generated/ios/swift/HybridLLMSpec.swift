@@ -16,6 +16,9 @@ public protocol HybridLLMSpec_protocol: HybridObject {
   var modelId: String { get }
   var debug: Bool { get set }
   var systemPrompt: String { get set }
+  var maxTokens: Double { get set }
+  var temperature: Double { get set }
+  var enableThinking: Bool { get set }
 
   // Methods
   func load(modelId: String, options: LLMLoadOptions?) throws -> Promise<Void>

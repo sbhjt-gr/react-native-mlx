@@ -98,6 +98,24 @@ namespace margelo::nitro::mlxreactnative {
     inline void setSystemPrompt(const std::string& systemPrompt) noexcept override {
       _swiftPart.setSystemPrompt(systemPrompt);
     }
+    inline double getMaxTokens() noexcept override {
+      return _swiftPart.getMaxTokens();
+    }
+    inline void setMaxTokens(double maxTokens) noexcept override {
+      _swiftPart.setMaxTokens(std::forward<decltype(maxTokens)>(maxTokens));
+    }
+    inline double getTemperature() noexcept override {
+      return _swiftPart.getTemperature();
+    }
+    inline void setTemperature(double temperature) noexcept override {
+      _swiftPart.setTemperature(std::forward<decltype(temperature)>(temperature));
+    }
+    inline bool getEnableThinking() noexcept override {
+      return _swiftPart.getEnableThinking();
+    }
+    inline void setEnableThinking(bool enableThinking) noexcept override {
+      _swiftPart.setEnableThinking(std::forward<decltype(enableThinking)>(enableThinking));
+    }
 
   public:
     // Methods
