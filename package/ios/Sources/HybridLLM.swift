@@ -540,7 +540,6 @@ class HybridLLM: HybridLLMSpec {
                         emitter.emitThinkingEnd(content)
                     }
                 }
-                }
 
             case .toolCall(let toolCall):
                 log("Tool call detected: \(toolCall.function.name)")
