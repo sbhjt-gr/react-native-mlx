@@ -230,10 +230,6 @@ class HybridLLM: HybridLLMSpec {
         }
 
         return Promise.async { [self] in
-            if self.manageHistory {
-                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
-            }
-
             let task = Task<String, Error> {
                 log("Generating response for: \(prompt.prefix(50))...")
                 let result = try await session.respond(to: prompt)
@@ -247,6 +243,7 @@ class HybridLLM: HybridLLMSpec {
             let result = try await task.value
 
             if self.manageHistory {
+                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
                 self.messageHistory.append(LLMMessage(role: "assistant", content: result))
             }
 
@@ -266,10 +263,6 @@ class HybridLLM: HybridLLMSpec {
         }
 
         return Promise.async { [self] in
-            if self.manageHistory {
-                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
-            }
-
             let task = Task<String, Error> {
                 let startTime = Date()
                 var firstTokenTime: Date?
@@ -313,6 +306,7 @@ class HybridLLM: HybridLLMSpec {
             let result = try await task.value
 
             if self.manageHistory {
+                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
                 self.messageHistory.append(LLMMessage(role: "assistant", content: result))
             }
 
@@ -329,10 +323,6 @@ class HybridLLM: HybridLLMSpec {
         }
 
         return Promise.async { [self] in
-            if self.manageHistory {
-                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
-            }
-
             let task = Task<String, Error> {
                 let startTime = Date()
                 var firstTokenTime: Date?
@@ -389,6 +379,7 @@ class HybridLLM: HybridLLMSpec {
             let result = try await task.value
 
             if self.manageHistory {
+                self.messageHistory.append(LLMMessage(role: "user", content: prompt))
                 self.messageHistory.append(LLMMessage(role: "assistant", content: result))
             }
 
@@ -461,6 +452,11 @@ class HybridLLM: HybridLLMSpec {
         var thinkingMachine = ThinkingStateMachine()
         var pendingToolCalls: [(id: String, tool: ToolDefinition, args: [String: Any], argsJson: String)] = []
 
+        let specialTokenPattern = try? NSRegularExpression(
+            pattern: "<\\|(?:im_end|im_start|endoftext|end|pad)\\|>",
+            options: []
+        )
+
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let userInput = UserInput(
             chat: chat,
@@ -488,9 +484,19 @@ class HybridLLM: HybridLLMSpec {
                 for machineOutput in outputs {
                     switch machineOutput {
                     case .token(let token):
-                        output += token
-                        emitter.emitToken(token)
-                        onTokenProcessed()
+                        var cleaned = token
+                        if let regex = specialTokenPattern {
+                            cleaned = regex.stringByReplacingMatches(
+                                in: cleaned,
+                                range: NSRange(cleaned.startIndex..., in: cleaned),
+                                withTemplate: ""
+                            )
+                        }
+                        if !cleaned.isEmpty {
+                            output += cleaned
+                            emitter.emitToken(cleaned)
+                            onTokenProcessed()
+                        }
 
                     case .thinkingStart:
                         emitter.emitThinkingStart()
@@ -614,7 +620,13 @@ class HybridLLM: HybridLLMSpec {
         }
 
         var output = ""
+        var thinkingMachine = ThinkingStateMachine()
         var pendingToolCalls: [(tool: ToolDefinition, args: [String: Any], argsJson: String)] = []
+
+        let specialTokenPattern = try? NSRegularExpression(
+            pattern: "<\\|(?:im_end|im_start|endoftext|end|pad)\\|>",
+            options: []
+        )
 
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let userInput = UserInput(
@@ -638,8 +650,34 @@ class HybridLLM: HybridLLMSpec {
 
             switch generation {
             case .chunk(let text):
-                output += text
-                onToken(text)
+                let outputs = thinkingMachine.process(token: text)
+
+                for machineOutput in outputs {
+                    switch machineOutput {
+                    case .token(let token):
+                        var cleaned = token
+                        if let regex = specialTokenPattern {
+                            cleaned = regex.stringByReplacingMatches(
+                                in: cleaned,
+                                range: NSRange(cleaned.startIndex..., in: cleaned),
+                                withTemplate: ""
+                            )
+                        }
+                        if !cleaned.isEmpty {
+                            output += cleaned
+                            onToken(cleaned)
+                        }
+
+                    case .thinkingStart:
+                        onToken("<think>")
+
+                    case .thinkingChunk(let chunk):
+                        onToken(chunk)
+
+                    case .thinkingEnd:
+                        onToken("</think>")
+                    }
+                }
 
             case .toolCall(let toolCall):
                 log("Tool call detected: \(toolCall.function.name)")
@@ -657,6 +695,31 @@ class HybridLLM: HybridLLMSpec {
 
             case .info(let info):
                 log("Generation info: \(info.generationTokenCount) tokens, \(String(format: "%.1f", info.tokensPerSecond)) tokens/s")
+            }
+        }
+
+        let flushOutputs = thinkingMachine.flush()
+        for machineOutput in flushOutputs {
+            switch machineOutput {
+            case .token(let token):
+                var cleaned = token
+                if let regex = specialTokenPattern {
+                    cleaned = regex.stringByReplacingMatches(
+                        in: cleaned,
+                        range: NSRange(cleaned.startIndex..., in: cleaned),
+                        withTemplate: ""
+                    )
+                }
+                if !cleaned.isEmpty {
+                    output += cleaned
+                    onToken(cleaned)
+                }
+            case .thinkingStart:
+                onToken("<think>")
+            case .thinkingChunk(let chunk):
+                onToken(chunk)
+            case .thinkingEnd:
+                onToken("</think>")
             }
         }
 
