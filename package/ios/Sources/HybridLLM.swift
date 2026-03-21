@@ -262,6 +262,12 @@ class HybridLLM: HybridLLMSpec {
             throw LLMError.notLoaded
         }
 
+        if let prev = currentTask {
+            log("stream_cancelling_previous")
+            prev.cancel()
+            currentTask = nil
+        }
+
         return Promise.async { [self] in
             let task = Task<String, Error> {
                 let startTime = Date()
@@ -325,6 +331,12 @@ class HybridLLM: HybridLLMSpec {
     ) throws -> Promise<String> {
         guard let container else {
             throw LLMError.notLoaded
+        }
+
+        if let prev = currentTask {
+            log("streamWithEvents_cancelling_previous")
+            prev.cancel()
+            currentTask = nil
         }
 
         return Promise.async { [self] in
