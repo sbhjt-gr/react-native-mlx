@@ -197,6 +197,8 @@ export interface LLM extends HybridObject<{ ios: 'swift' }> {
   maxTokens: number
   /** Sampling temperature (0 = deterministic, higher = more random) */
   temperature: number
+  /** Enable thinking mode for models that support it */
+  enableThinking: boolean
 }
 
 /**

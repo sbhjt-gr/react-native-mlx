@@ -242,4 +242,12 @@ export const LLM = {
   set temperature(value: number) {
     getInstance().temperature = value
   },
+
+  get enableThinking(): boolean {
+    return getInstance().enableThinking
+  },
+
+  set enableThinking(value: boolean) {
+    getInstance().enableThinking = value
+  },
 }
