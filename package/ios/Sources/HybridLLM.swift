@@ -72,16 +72,27 @@ class HybridLLM: HybridLLMSpec {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return [] }
 
+        var allIds = Set<Int>()
+
         if let ids = extractEosIds(from: json) {
-            return ids
+            allIds.formUnion(ids)
         }
 
-        if let textConfig = json["text_config"] as? [String: Any],
-           let ids = extractEosIds(from: textConfig) {
-            return ids
+        for key in ["text_config", "language_config", "llm_config"] {
+            if let nested = json[key] as? [String: Any],
+               let ids = extractEosIds(from: nested) {
+                allIds.formUnion(ids)
+            }
         }
 
-        return []
+        let genConfigURL = modelDir.appendingPathComponent("generation_config.json")
+        if let genData = try? Data(contentsOf: genConfigURL),
+           let genJson = try? JSONSerialization.jsonObject(with: genData) as? [String: Any],
+           let ids = extractEosIds(from: genJson) {
+            allIds = ids
+        }
+
+        return allIds
     }
 
     private func extractEosIds(from dict: [String: Any]) -> Set<Int>? {
@@ -157,16 +168,27 @@ class HybridLLM: HybridLLMSpec {
                  mlx-swift-lm only reads top-level eos_token_id from config.json.
                  Models like Qwen3.5 nest it inside text_config, leaving the stop
                  set empty. Parse it ourselves and patch the container.
+                 Also add common chat stop tokens as extraEOSTokens.
                 */
                 let containerEos = await loadedContainer.configuration.eosTokenIds
-                if containerEos.isEmpty {
-                    let parsed = self.parseEosTokenIds(from: modelDir)
-                    if !parsed.isEmpty {
-                        log("Patching eosTokenIds from config: \(parsed)")
-                        await loadedContainer.update { ctx in
+                let containerExtra = await loadedContainer.configuration.extraEOSTokens
+                log("EOS state after load - ids: \(containerEos), extra: \(containerExtra)")
+
+                let parsed = self.parseEosTokenIds(from: modelDir)
+                let chatStopTokens: Set<String> = ["<|endoftext|>", "<|im_end|>", "<|im_start|>"]
+                let needsIdPatch = containerEos.isEmpty && !parsed.isEmpty
+                let missingExtra = chatStopTokens.subtracting(containerExtra)
+
+                if needsIdPatch || !missingExtra.isEmpty {
+                    await loadedContainer.update { ctx in
+                        if needsIdPatch {
                             ctx.configuration.eosTokenIds = parsed
                         }
+                        ctx.configuration.extraEOSTokens.formUnion(chatStopTokens)
                     }
+                    let updated = await loadedContainer.configuration.eosTokenIds
+                    let updatedExtra = await loadedContainer.configuration.extraEOSTokens
+                    log("EOS patched - ids: \(updated), extra: \(updatedExtra)")
                 }
 
                 let memoryAfterContainer = self.getMemoryUsage()
