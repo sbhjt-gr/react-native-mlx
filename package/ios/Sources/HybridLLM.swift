@@ -268,6 +268,9 @@ class HybridLLM: HybridLLMSpec {
                 var firstTokenTime: Date?
                 var tokenCount = 0
 
+                log("stream_start prompt=\(prompt.count)chars history=\(self.messageHistory.count) manageHistory=\(self.manageHistory)")
+                log("stream_prompt: \(prompt.prefix(300))")
+
                 let result = try await self.performGeneration(
                     container: container,
                     prompt: prompt,
@@ -296,7 +299,8 @@ class HybridLLM: HybridLLMSpec {
                     toolExecutionTime: 0
                 )
 
-                log("Stream complete - \(tokenCount) tokens, \(String(format: "%.1f", tokensPerSecond)) tokens/s")
+                log("stream_done tokens=\(tokenCount) tps=\(String(format: "%.1f", tokensPerSecond)) result=\(result.count)chars")
+                log("stream_result_preview: \(result.prefix(300))")
                 return result
             }
 
@@ -308,6 +312,7 @@ class HybridLLM: HybridLLMSpec {
             if self.manageHistory {
                 self.messageHistory.append(LLMMessage(role: "user", content: prompt))
                 self.messageHistory.append(LLMMessage(role: "assistant", content: result))
+                log("stream_history_updated count=\(self.messageHistory.count)")
             }
 
             return result
@@ -394,11 +399,14 @@ class HybridLLM: HybridLLMSpec {
     ) -> [Chat.Message] {
         var chat: [Chat.Message] = []
 
+        log("build_chat depth=\(depth) history=\(self.messageHistory.count) prompt=\(prompt.count)chars")
+
         if !self.systemPrompt.isEmpty {
             chat.append(.system(self.systemPrompt))
+            log("  [system] \(self.systemPrompt.prefix(80))...")
         }
 
-        for msg in self.messageHistory {
+        for (i, msg) in self.messageHistory.enumerated() {
             switch msg.role {
             case "user": chat.append(.user(msg.content))
             case "assistant": chat.append(.assistant(msg.content))
@@ -406,18 +414,22 @@ class HybridLLM: HybridLLMSpec {
             case "tool": chat.append(.tool(msg.content))
             default: break
             }
+            log("  [\(i):\(msg.role)] \(msg.content.prefix(120))")
         }
 
         if depth == 0 {
             chat.append(.user(prompt))
+            log("  [prompt] \(prompt.prefix(200))")
         }
 
         if let toolResults {
-            for result in toolResults {
+            for (i, result) in toolResults.enumerated() {
                 chat.append(.tool(result))
+                log("  [tool_result_\(i)] \(result.prefix(100))")
             }
         }
 
+        log("chat_built total=\(chat.count) messages")
         return chat
     }
 
@@ -451,11 +463,14 @@ class HybridLLM: HybridLLMSpec {
         var output = ""
         var thinkingMachine = ThinkingStateMachine()
         var pendingToolCalls: [(id: String, tool: ToolDefinition, args: [String: Any], argsJson: String)] = []
+        var rawTokenLog = ""
 
         let specialTokenPattern = try? NSRegularExpression(
             pattern: "<\\|(?:im_end|im_start|endoftext|end|pad)\\|>",
             options: []
         )
+
+        log("perform_gen_events depth=\(depth) prompt=\(prompt.count)chars toolResults=\(toolResults?.count ?? 0)")
 
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let userInput = UserInput(
@@ -464,6 +479,7 @@ class HybridLLM: HybridLLMSpec {
         )
 
         let lmInput = try await container.prepare(input: userInput)
+        log("perform_gen_events input_prepared")
 
         let stream = try await container.perform { context in
             let parameters = GenerateParameters(maxTokens: 2048, temperature: 0.7)
@@ -474,11 +490,21 @@ class HybridLLM: HybridLLMSpec {
             )
         }
 
+        var chunkCount = 0
         for await generation in stream {
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                log("perform_gen_events cancelled at chunk=\(chunkCount)")
+                break
+            }
 
             switch generation {
             case .chunk(let text):
+                chunkCount += 1
+                rawTokenLog += text
+                if chunkCount <= 20 || chunkCount % 50 == 0 {
+                    log("raw_chunk_events[\(chunkCount)] \(text.debugDescription)")
+                }
+
                 let outputs = thinkingMachine.process(token: text)
 
                 for machineOutput in outputs {
@@ -486,11 +512,15 @@ class HybridLLM: HybridLLMSpec {
                     case .token(let token):
                         var cleaned = token
                         if let regex = specialTokenPattern {
+                            let before = cleaned
                             cleaned = regex.stringByReplacingMatches(
                                 in: cleaned,
                                 range: NSRange(cleaned.startIndex..., in: cleaned),
                                 withTemplate: ""
                             )
+                            if before != cleaned {
+                                log("stripped_special_events: \(before.debugDescription) -> \(cleaned.debugDescription)")
+                            }
                         }
                         if !cleaned.isEmpty {
                             output += cleaned
@@ -499,14 +529,17 @@ class HybridLLM: HybridLLMSpec {
                         }
 
                     case .thinkingStart:
+                        log("thinking_start_events at chunk=\(chunkCount)")
                         emitter.emitThinkingStart()
 
                     case .thinkingChunk(let chunk):
                         emitter.emitThinkingChunk(chunk)
 
                     case .thinkingEnd(let content):
+                        log("thinking_end_events at chunk=\(chunkCount)")
                         emitter.emitThinkingEnd(content)
                     }
+                }
                 }
 
             case .toolCall(let toolCall):
@@ -525,11 +558,14 @@ class HybridLLM: HybridLLMSpec {
                 pendingToolCalls.append((id: toolCallId, tool: tool, args: argsDict, argsJson: argsJson))
 
             case .info(let info):
-                log("Generation info: \(info.generationTokenCount) tokens, \(String(format: "%.1f", info.tokensPerSecond)) tokens/s")
+                log("gen_info_events chunks=\(chunkCount) genTokens=\(info.generationTokenCount) tps=\(String(format: "%.1f", info.tokensPerSecond))")
                 let generationTime = info.tokensPerSecond > 0 ? Double(info.generationTokenCount) / info.tokensPerSecond * 1000 : 0
                 onGenerationInfo(info.generationTokenCount, generationTime)
             }
         }
+
+        log("perform_gen_events_loop_done chunks=\(chunkCount) output=\(output.count)chars")
+        log("raw_output_events_first500: \(rawTokenLog.prefix(500))")
 
         let flushOutputs = thinkingMachine.flush()
         for machineOutput in flushOutputs {
@@ -622,11 +658,14 @@ class HybridLLM: HybridLLMSpec {
         var output = ""
         var thinkingMachine = ThinkingStateMachine()
         var pendingToolCalls: [(tool: ToolDefinition, args: [String: Any], argsJson: String)] = []
+        var rawTokenLog = ""
 
         let specialTokenPattern = try? NSRegularExpression(
             pattern: "<\\|(?:im_end|im_start|endoftext|end|pad)\\|>",
             options: []
         )
+
+        log("perform_gen depth=\(depth) prompt=\(prompt.count)chars toolResults=\(toolResults?.count ?? 0)")
 
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let userInput = UserInput(
@@ -635,6 +674,7 @@ class HybridLLM: HybridLLMSpec {
         )
 
         let lmInput = try await container.prepare(input: userInput)
+        log("perform_gen input_prepared")
 
         let stream = try await container.perform { context in
             let parameters = GenerateParameters(maxTokens: 2048, temperature: 0.7)
@@ -645,11 +685,21 @@ class HybridLLM: HybridLLMSpec {
             )
         }
 
+        var chunkCount = 0
         for await generation in stream {
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                log("perform_gen cancelled at chunk=\(chunkCount)")
+                break
+            }
 
             switch generation {
             case .chunk(let text):
+                chunkCount += 1
+                rawTokenLog += text
+                if chunkCount <= 20 || chunkCount % 50 == 0 {
+                    log("raw_chunk[\(chunkCount)] \(text.debugDescription)")
+                }
+
                 let outputs = thinkingMachine.process(token: text)
 
                 for machineOutput in outputs {
@@ -657,11 +707,15 @@ class HybridLLM: HybridLLMSpec {
                     case .token(let token):
                         var cleaned = token
                         if let regex = specialTokenPattern {
+                            let before = cleaned
                             cleaned = regex.stringByReplacingMatches(
                                 in: cleaned,
                                 range: NSRange(cleaned.startIndex..., in: cleaned),
                                 withTemplate: ""
                             )
+                            if before != cleaned {
+                                log("stripped_special: \(before.debugDescription) -> \(cleaned.debugDescription)")
+                            }
                         }
                         if !cleaned.isEmpty {
                             output += cleaned
@@ -669,12 +723,14 @@ class HybridLLM: HybridLLMSpec {
                         }
 
                     case .thinkingStart:
+                        log("thinking_start at chunk=\(chunkCount)")
                         onToken("<think>")
 
                     case .thinkingChunk(let chunk):
                         onToken(chunk)
 
                     case .thinkingEnd:
+                        log("thinking_end at chunk=\(chunkCount)")
                         onToken("</think>")
                     }
                 }
@@ -694,11 +750,17 @@ class HybridLLM: HybridLLMSpec {
                 onToolCall(toolCall.function.name, argsJson)
 
             case .info(let info):
-                log("Generation info: \(info.generationTokenCount) tokens, \(String(format: "%.1f", info.tokensPerSecond)) tokens/s")
+                log("gen_info chunks=\(chunkCount) genTokens=\(info.generationTokenCount) tps=\(String(format: "%.1f", info.tokensPerSecond))")
             }
         }
 
+        log("perform_gen_loop_done chunks=\(chunkCount) output=\(output.count)chars")
+        log("raw_output_first500: \(rawTokenLog.prefix(500))")
+
         let flushOutputs = thinkingMachine.flush()
+        if !flushOutputs.isEmpty {
+            log("flush_outputs count=\(flushOutputs.count)")
+        }
         for machineOutput in flushOutputs {
             switch machineOutput {
             case .token(let token):
@@ -773,6 +835,7 @@ class HybridLLM: HybridLLMSpec {
             return output + continuation
         }
 
+        log("perform_gen_result output=\(output.count)chars preview: \(output.prefix(200))")
         return output
     }
 
@@ -856,10 +919,14 @@ class HybridLLM: HybridLLMSpec {
     }
 
     func clearHistory() throws {
+        log("clear_history before=\(messageHistory.count) messages")
+        for (i, msg) in messageHistory.enumerated() {
+            log("  clearing[\(i):\(msg.role)] \(msg.content.prefix(80))")
+        }
         messageHistory = []
         if let container = self.container {
             self.session = ChatSession(container, instructions: self.systemPrompt)
         }
-        log("History and session cleared")
+        log("clear_history done session_reset")
     }
 }
