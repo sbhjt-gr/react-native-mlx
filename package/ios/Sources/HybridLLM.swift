@@ -460,7 +460,7 @@ class HybridLLM: HybridLLMSpec {
             ["role": $0.role.rawValue, "content": $0.content]
         }
 
-        let tokens: [Int] = try await container.perform { context in
+        let tokens: [Int] = try await container.perform { (context: ModelContext) in
             do {
                 let result = try context.tokenizer.applyChatTemplate(
                     messages: messages,
