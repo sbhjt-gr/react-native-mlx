@@ -406,6 +406,8 @@ class HybridLLM: HybridLLMSpec {
         }
     }
 
+    private static let fallbackTemplate = "{%- for message in messages %}{{'<|im_start|>' + message['role'] + '\\n' + message['content'] + '<|im_end|>' + '\\n'}}{%- endfor %}{%- if add_generation_prompt %}{%- if enable_thinking is defined and enable_thinking is true %}{{ '<|im_start|>assistant\\n<think>\\n' }}{%- else %}{{ '<|im_start|>assistant\\n' }}{%- endif %}{%- endif %}"
+
     private func buildChatMessages(
         prompt: String,
         toolResults: [String]?,
@@ -445,6 +447,50 @@ class HybridLLM: HybridLLMSpec {
 
         log("chat_built total=\(chat.count) messages")
         return chat
+    }
+
+    private func prepareInput(
+        container: ModelContainer,
+        chat: [Chat.Message]
+    ) async throws -> LMInput {
+        let tools = !self.toolSchemas.isEmpty ? self.toolSchemas : nil
+        let additionalCtx: [String: any Sendable] = ["enable_thinking": true]
+
+        let messages: [[String: any Sendable]] = chat.map {
+            ["role": $0.role.rawValue, "content": $0.content]
+        }
+
+        let tokens: [Int] = try await container.perform { context in
+            do {
+                let result = try context.tokenizer.applyChatTemplate(
+                    messages: messages,
+                    addGenerationPrompt: true,
+                    tools: tools,
+                    additionalContext: additionalCtx
+                )
+                self.log("template_applied token_count=\(result.count)")
+                let decoded = context.tokenizer.decode(tokens: Array(result.suffix(60)))
+                self.log("input_tail_decoded: \(decoded)")
+                return result
+            } catch {
+                self.log("template_error: \(error), retrying with fallback")
+                let result = try context.tokenizer.applyChatTemplate(
+                    messages: messages,
+                    chatTemplate: .literal(HybridLLM.fallbackTemplate),
+                    addGenerationPrompt: true,
+                    truncation: false,
+                    maxLength: nil,
+                    tools: nil,
+                    additionalContext: additionalCtx
+                )
+                self.log("fallback_template_applied token_count=\(result.count)")
+                let decoded = context.tokenizer.decode(tokens: Array(result.suffix(60)))
+                self.log("fallback_input_tail_decoded: \(decoded)")
+                return result
+            }
+        }
+
+        return LMInput(tokens: MLXArray(tokens))
     }
 
     private func executeToolCall(
@@ -487,12 +533,7 @@ class HybridLLM: HybridLLMSpec {
         log("perform_gen_events depth=\(depth) prompt=\(prompt.count)chars toolResults=\(toolResults?.count ?? 0)")
 
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
-        let userInput = UserInput(
-            chat: chat,
-            tools: !self.toolSchemas.isEmpty ? self.toolSchemas : nil
-        )
-
-        let lmInput = try await container.prepare(input: userInput)
+        let lmInput = try await prepareInput(container: container, chat: chat)
         log("perform_gen_events input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
 
         let stream = try await container.perform { context in
@@ -681,12 +722,7 @@ class HybridLLM: HybridLLMSpec {
         log("perform_gen depth=\(depth) prompt=\(prompt.count)chars toolResults=\(toolResults?.count ?? 0)")
 
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
-        let userInput = UserInput(
-            chat: chat,
-            tools: !self.toolSchemas.isEmpty ? self.toolSchemas : nil
-        )
-
-        let lmInput = try await container.prepare(input: userInput)
+        let lmInput = try await prepareInput(container: container, chat: chat)
         log("perform_gen input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
 
         let stream = try await container.perform { context in
