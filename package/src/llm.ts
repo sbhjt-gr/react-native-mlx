@@ -226,4 +226,20 @@ export const LLM = {
   set systemPrompt(value: string) {
     getInstance().systemPrompt = value
   },
+
+  get maxTokens(): number {
+    return getInstance().maxTokens
+  },
+
+  set maxTokens(value: number) {
+    getInstance().maxTokens = value
+  },
+
+  get temperature(): number {
+    return getInstance().temperature
+  },
+
+  set temperature(value: number) {
+    getInstance().temperature = value
+  },
 }

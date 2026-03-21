@@ -193,6 +193,10 @@ export interface LLM extends HybridObject<{ ios: 'swift' }> {
   debug: boolean
   /** System prompt used when loading the model */
   systemPrompt: string
+  /** Maximum number of tokens to generate */
+  maxTokens: number
+  /** Sampling temperature (0 = deterministic, higher = more random) */
+  temperature: number
 }
 
 /**
