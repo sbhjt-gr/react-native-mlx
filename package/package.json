@@ -1,7 +1,7 @@
 {
   "name": "@inferrlm/react-native-mlx",
   "description": "MLX Swift integration for React Native - InferrLM fork with enhanced features",
-  "version": "0.4.1",
+  "version": "0.4.2-alpha.0",
   "main": "./lib/module/index.js",
   "module": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
