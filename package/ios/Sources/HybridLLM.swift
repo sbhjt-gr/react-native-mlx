@@ -794,6 +794,9 @@ class HybridLLM: HybridLLMSpec {
 
     func clearHistory() throws {
         messageHistory = []
-        log("Message history cleared")
+        if let container = self.container {
+            self.session = ChatSession(container, instructions: self.systemPrompt)
+        }
+        log("History and session cleared")
     }
 }
