@@ -29,6 +29,8 @@ class HybridLLM: HybridLLMSpec {
     var modelId: String = ""
     var debug: Bool = false
     var systemPrompt: String = "You are a helpful assistant."
+    var maxTokens: Int = 2048
+    var temperature: Float = 0.7
     var additionalContext: LLMMessage = LLMMessage()
 
     private func log(_ message: String) {
@@ -274,8 +276,8 @@ class HybridLLM: HybridLLMSpec {
                 var firstTokenTime: Date?
                 var tokenCount = 0
 
-                log("stream_start prompt=\(prompt.count)chars history=\(self.messageHistory.count) manageHistory=\(self.manageHistory)")
-                log("stream_prompt: \(prompt.prefix(300))")
+                log("stream_start prompt=\(prompt.count)chars history=\(self.messageHistory.count) manageHistory=\(self.manageHistory) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
+                log("stream_prompt: \(prompt)")
 
                 let result = try await self.performGeneration(
                     container: container,
@@ -306,7 +308,7 @@ class HybridLLM: HybridLLMSpec {
                 )
 
                 log("stream_done tokens=\(tokenCount) tps=\(String(format: "%.1f", tokensPerSecond)) result=\(result.count)chars")
-                log("stream_result_preview: \(result.prefix(300))")
+                log("stream_result: \(result)")
                 return result
             }
 
@@ -415,7 +417,7 @@ class HybridLLM: HybridLLMSpec {
 
         if !self.systemPrompt.isEmpty {
             chat.append(.system(self.systemPrompt))
-            log("  [system] \(self.systemPrompt.prefix(80))...")
+            log("  [system] \(self.systemPrompt)")
         }
 
         for (i, msg) in self.messageHistory.enumerated() {
@@ -426,18 +428,18 @@ class HybridLLM: HybridLLMSpec {
             case "tool": chat.append(.tool(msg.content))
             default: break
             }
-            log("  [\(i):\(msg.role)] \(msg.content.prefix(120))")
+            log("  [\(i):\(msg.role)] \(msg.content)")
         }
 
         if depth == 0 {
             chat.append(.user(prompt))
-            log("  [prompt] \(prompt.prefix(200))")
+            log("  [prompt] \(prompt)")
         }
 
         if let toolResults {
             for (i, result) in toolResults.enumerated() {
                 chat.append(.tool(result))
-                log("  [tool_result_\(i)] \(result.prefix(100))")
+                log("  [tool_result_\(i)] \(result)")
             }
         }
 
@@ -491,10 +493,10 @@ class HybridLLM: HybridLLMSpec {
         )
 
         let lmInput = try await container.prepare(input: userInput)
-        log("perform_gen_events input_prepared")
+        log("perform_gen_events input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
 
         let stream = try await container.perform { context in
-            let parameters = GenerateParameters(maxTokens: 2048, temperature: 0.7)
+            let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
             return try MLXLMCommon.generate(
                 input: lmInput,
                 parameters: parameters,
@@ -576,7 +578,7 @@ class HybridLLM: HybridLLMSpec {
         }
 
         log("perform_gen_events_loop_done chunks=\(chunkCount) output=\(output.count)chars")
-        log("raw_output_events_first500: \(rawTokenLog.prefix(500))")
+        log("raw_output_events: \(rawTokenLog)")
 
         let flushOutputs = thinkingMachine.flush()
         for machineOutput in flushOutputs {
@@ -685,10 +687,10 @@ class HybridLLM: HybridLLMSpec {
         )
 
         let lmInput = try await container.prepare(input: userInput)
-        log("perform_gen input_prepared")
+        log("perform_gen input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
 
         let stream = try await container.perform { context in
-            let parameters = GenerateParameters(maxTokens: 2048, temperature: 0.7)
+            let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
             return try MLXLMCommon.generate(
                 input: lmInput,
                 parameters: parameters,
@@ -766,7 +768,7 @@ class HybridLLM: HybridLLMSpec {
         }
 
         log("perform_gen_loop_done chunks=\(chunkCount) output=\(output.count)chars")
-        log("raw_output_first500: \(rawTokenLog.prefix(500))")
+        log("raw_output: \(rawTokenLog)")
 
         let flushOutputs = thinkingMachine.flush()
         if !flushOutputs.isEmpty {
@@ -846,7 +848,7 @@ class HybridLLM: HybridLLMSpec {
             return output + continuation
         }
 
-        log("perform_gen_result output=\(output.count)chars preview: \(output.prefix(200))")
+        log("perform_gen_result output=\(output.count)chars result: \(output)")
         return output
     }
 
@@ -932,7 +934,7 @@ class HybridLLM: HybridLLMSpec {
     func clearHistory() throws {
         log("clear_history before=\(messageHistory.count) messages")
         for (i, msg) in messageHistory.enumerated() {
-            log("  clearing[\(i):\(msg.role)] \(msg.content.prefix(80))")
+            log("  clearing[\(i):\(msg.role)] \(msg.content)")
         }
         messageHistory = []
         if let container = self.container {
