@@ -1,20 +1,19 @@
-# react-native-nitro-mlx
+# @inferrlm/react-native-mlx
 
 Run LLMs, Text-to-Speech, and Speech-to-Text on-device in React Native using [MLX Swift](https://github.com/ml-explore/mlx-swift).
 
+Built with [Nitro Modules](https://github.com/mrousavy/nitro) for zero-overhead native bridging.
+
 ## Requirements
 
-- iOS 26.0+
+- iOS 16.0+
+- React Native 0.76+
+- react-native-nitro-modules
 
 ## Installation
 
 ```bash
-npm install react-native-nitro-mlx react-native-nitro-modules
-```
-
-Then run pod install:
-
-```bash
+npm install @inferrlm/react-native-mlx react-native-nitro-modules
 cd ios && pod install
 ```
 
@@ -23,43 +22,24 @@ cd ios && pod install
 ### Download a Model
 
 ```typescript
-import { ModelManager } from 'react-native-nitro-mlx'
+import { ModelManager, MLXModel } from '@inferrlm/react-native-mlx'
 
-await ModelManager.download('mlx-community/Qwen3-0.6B-4bit', (progress) => {
-  console.log(`Download progress: ${(progress * 100).toFixed(1)}%`)
+await ModelManager.download(MLXModel.Qwen3_1_7B_4bit, (progress) => {
+  console.log(`${(progress * 100).toFixed(1)}%`)
 })
 ```
 
 ### Load and Generate
 
 ```typescript
-import { LLM } from 'react-native-nitro-mlx'
+import { LLM } from '@inferrlm/react-native-mlx'
 
-await LLM.load('mlx-community/Qwen3-0.6B-4bit', {
-  onProgress: (progress) => {
-    console.log(`Loading: ${(progress * 100).toFixed(0)}%`)
-  }
+await LLM.load('mlx-community/Qwen3-1.7B-4bit', {
+  onProgress: (p) => console.log(`Loading: ${(p * 100).toFixed(0)}%`),
+  manageHistory: true,
 })
 
 const response = await LLM.generate('What is the capital of France?')
-console.log(response)
-```
-
-### Load with Additional Context
-
-You can provide conversation history or few-shot examples when loading the model:
-
-```typescript
-await LLM.load('mlx-community/Qwen3-0.6B-4bit', {
-  onProgress: (progress) => {
-    console.log(`Loading: ${(progress * 100).toFixed(0)}%`)
-  },
-  additionalContext: [
-    { role: 'user', content: 'What is machine learning?' },
-    { role: 'assistant', content: 'Machine learning is...' },
-    { role: 'user', content: 'Can you explain neural networks?' }
-  ]
-})
 ```
 
 ### Streaming
@@ -68,8 +48,87 @@ await LLM.load('mlx-community/Qwen3-0.6B-4bit', {
 let response = ''
 await LLM.stream('Tell me a story', (token) => {
   response += token
-  console.log(response)
 })
+```
+
+### Streaming with Events
+
+For thinking blocks (chain-of-thought) and tool calls, use the event-based API:
+
+```typescript
+await LLM.streamWithEvents('Solve 2+3 step by step', (event) => {
+  switch (event.type) {
+    case 'thinking_start':
+      showThinkingIndicator()
+      break
+    case 'thinking_chunk':
+      appendToThinking(event.chunk)
+      break
+    case 'thinking_end':
+      hideThinkingIndicator()
+      break
+    case 'token':
+      appendToContent(event.token)
+      break
+    case 'generation_end':
+      console.log(`${event.stats.tokensPerSecond} tok/s`)
+      break
+  }
+})
+```
+
+### Configuring Generation
+
+```typescript
+LLM.systemPrompt = 'You are a helpful coding assistant.'
+LLM.maxTokens = 2048
+LLM.temperature = 0.7
+LLM.enableThinking = true
+```
+
+### Tool Calling
+
+```typescript
+import { LLM, createTool } from '@inferrlm/react-native-mlx'
+import { z } from 'zod'
+
+const weatherTool = createTool({
+  name: 'get_weather',
+  description: 'Get weather for a city',
+  arguments: z.object({
+    city: z.string().describe('City name'),
+  }),
+  handler: async ({ city }) => {
+    return { temperature: 22, condition: 'sunny' }
+  },
+})
+
+await LLM.load('mlx-community/Qwen3-1.7B-4bit', {
+  onProgress: (p) => console.log(`${(p * 100).toFixed(0)}%`),
+  tools: [weatherTool],
+})
+
+await LLM.stream('What is the weather in Tokyo?', (token) => {
+  process.stdout.write(token)
+}, (update) => {
+  console.log(`Tool called: ${update.toolCall.name}`)
+})
+```
+
+### Conversation History
+
+When `manageHistory: true` is set during load, conversation turns are automatically tracked:
+
+```typescript
+await LLM.load('mlx-community/Qwen3-1.7B-4bit', {
+  manageHistory: true,
+})
+
+await LLM.stream('My name is Alice', onToken)
+await LLM.stream('What is my name?', onToken) // Remembers "Alice"
+
+const history = LLM.getHistory()
+LLM.clearHistory()
 ```
 
 ### Stop Generation
@@ -78,23 +137,26 @@ await LLM.stream('Tell me a story', (token) => {
 LLM.stop()
 ```
 
+### Unload
+
+```typescript
+LLM.unload()
+```
+
 ### Text-to-Speech
 
 ```typescript
-import { TTS, MLXModel } from 'react-native-nitro-mlx'
+import { TTS, MLXModel } from '@inferrlm/react-native-mlx'
 
 await TTS.load(MLXModel.PocketTTS, {
-  onProgress: (progress) => {
-    console.log(`Loading: ${(progress * 100).toFixed(0)}%`)
-  }
+  onProgress: (p) => console.log(`${(p * 100).toFixed(0)}%`),
 })
 
 const audioBuffer = await TTS.generate('Hello world!', {
   voice: 'alba',
-  speed: 1.0
+  speed: 1.0,
 })
 
-// Or stream audio chunks as they're generated
 await TTS.stream('Hello world!', (chunk) => {
   // Process each audio chunk
 }, { voice: 'alba' })
@@ -105,129 +167,167 @@ Available voices: `alba`, `azelma`, `cosette`, `eponine`, `fantine`, `javert`, `
 ### Speech-to-Text
 
 ```typescript
-import { STT, MLXModel } from 'react-native-nitro-mlx'
+import { STT, MLXModel } from '@inferrlm/react-native-mlx'
 
 await STT.load(MLXModel.GLM_ASR_Nano_4bit, {
-  onProgress: (progress) => {
-    console.log(`Loading: ${(progress * 100).toFixed(0)}%`)
-  }
+  onProgress: (p) => console.log(`${(p * 100).toFixed(0)}%`),
 })
 
-// Transcribe an audio buffer
 const text = await STT.transcribe(audioBuffer)
 
-// Or use live microphone transcription
+// Live microphone transcription
 await STT.startListening()
-const partial = await STT.transcribeBuffer() // Get current transcript
-const final = await STT.stopListening()      // Stop and get final transcript
+const partial = await STT.transcribeBuffer()
+const final = await STT.stopListening()
 ```
 
 ## API
 
 ### LLM
 
+#### Methods
+
 | Method | Description |
 |--------|-------------|
-| `load(modelId: string, options?: LLMLoadOptions): Promise<void>` | Load a model into memory |
-| `generate(prompt: string): Promise<string>` | Generate a complete response |
-| `stream(prompt: string, onToken: (token: string) => void): Promise<string>` | Stream tokens as they're generated |
-| `stop(): void` | Stop the current generation |
+| `load(modelId, options?)` | Load a model into memory. Downloads from HuggingFace if not cached |
+| `generate(prompt)` | Generate a complete response (blocking) |
+| `stream(prompt, onToken, onToolCall?)` | Stream tokens with optional tool call updates |
+| `streamWithEvents(prompt, onEvent)` | Stream with typed events for thinking/tool calls |
+| `stop()` | Stop current generation |
+| `unload()` | Unload model and free memory |
+| `getLastGenerationStats()` | Get token count, speed, timing from last generation |
+| `getHistory()` | Get conversation history (if `manageHistory` enabled) |
+| `clearHistory()` | Clear conversation history |
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `isLoaded` | `boolean` | - | Whether a model is loaded (read-only) |
+| `isGenerating` | `boolean` | - | Whether generation is in progress (read-only) |
+| `modelId` | `string` | `''` | Currently loaded model ID (read-only) |
+| `debug` | `boolean` | `false` | Enable debug logging |
+| `systemPrompt` | `string` | `'You are a helpful assistant.'` | System prompt for the model |
+| `maxTokens` | `number` | `2048` | Maximum tokens to generate |
+| `temperature` | `number` | `0.7` | Sampling temperature (0 = deterministic) |
+| `enableThinking` | `boolean` | `true` | Enable thinking mode for supported models |
 
 #### LLMLoadOptions
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `onProgress` | `(progress: number) => void` | Optional callback invoked with loading progress (0-1) |
-| `additionalContext` | `LLMMessage[]` | Optional conversation history or few-shot examples to provide to the model |
+| `onProgress` | `(progress: number) => void` | Loading progress callback (0-1) |
+| `additionalContext` | `LLMMessage[]` | Conversation history or few-shot examples |
+| `manageHistory` | `boolean` | Automatically manage conversation history |
+| `tools` | `ToolDefinition[]` | Tools available for the model to call |
 
-#### LLMMessage
+#### GenerationStats
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `role` | `'user' \| 'assistant' \| 'system'` | The role of the message sender |
-| `content` | `string` | The message content |
+| `tokenCount` | `number` | Total tokens generated |
+| `tokensPerSecond` | `number` | Generation speed |
+| `timeToFirstToken` | `number` | Time to first token (ms) |
+| `totalTime` | `number` | Total generation time (ms) |
+| `toolExecutionTime` | `number` | Time spent executing tools (ms) |
 
-| Property | Description |
-|----------|-------------|
-| `isLoaded: boolean` | Whether a model is loaded |
-| `isGenerating: boolean` | Whether generation is in progress |
-| `modelId: string` | The currently loaded model ID |
-| `debug: boolean` | Enable debug logging |
+#### StreamEvent Types
+
+| Event | Fields | Description |
+|-------|--------|-------------|
+| `generation_start` | `timestamp` | Generation began |
+| `token` | `token` | Response token |
+| `thinking_start` | `timestamp` | Model began thinking |
+| `thinking_chunk` | `chunk` | Thinking content chunk |
+| `thinking_end` | `content`, `timestamp` | Thinking complete |
+| `tool_call_start` | `id`, `name`, `arguments` | Tool call initiated |
+| `tool_call_executing` | `id` | Tool handler running |
+| `tool_call_completed` | `id`, `result` | Tool returned result |
+| `tool_call_failed` | `id`, `error` | Tool execution failed |
+| `generation_end` | `content`, `stats` | Generation complete |
 
 ### TTS
 
+#### Methods
+
 | Method | Description |
 |--------|-------------|
-| `load(modelId: string, options?: TTSLoadOptions): Promise<void>` | Load a TTS model into memory |
-| `generate(text: string, options?: TTSGenerateOptions): Promise<ArrayBuffer>` | Generate audio from text |
-| `stream(text: string, onAudioChunk: (audio: ArrayBuffer) => void, options?: TTSGenerateOptions): Promise<void>` | Stream audio chunks as they're generated |
-| `stop(): void` | Stop the current generation |
-| `unload(): void` | Unload the model and free memory |
+| `load(modelId, options?)` | Load a TTS model |
+| `generate(text, options?)` | Generate audio buffer from text |
+| `stream(text, onAudioChunk, options?)` | Stream audio chunks |
+| `stop()` | Stop generation |
+| `unload()` | Unload model |
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `isLoaded` | `boolean` | Whether a TTS model is loaded |
+| `isGenerating` | `boolean` | Whether audio is being generated |
+| `modelId` | `string` | Currently loaded model ID |
+| `sampleRate` | `number` | Audio sample rate (e.g. 24000) |
 
 #### TTSGenerateOptions
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `voice` | `string` | Voice to use (alba, azelma, cosette, eponine, fantine, javert, jean, marius) |
+| `voice` | `string` | Voice name |
 | `speed` | `number` | Speech speed multiplier |
-
-| Property | Description |
-|----------|-------------|
-| `isLoaded: boolean` | Whether a TTS model is loaded |
-| `isGenerating: boolean` | Whether audio generation is in progress |
-| `modelId: string` | The currently loaded model ID |
-| `sampleRate: number` | Audio sample rate of the loaded model (e.g. 24000) |
 
 ### STT
 
+#### Methods
+
 | Method | Description |
 |--------|-------------|
-| `load(modelId: string, options?: STTLoadOptions): Promise<void>` | Load an STT model into memory |
-| `transcribe(audio: ArrayBuffer): Promise<string>` | Transcribe an audio buffer |
-| `transcribeStream(audio: ArrayBuffer, onToken: (token: string) => void): Promise<string>` | Stream transcription tokens as they're generated |
-| `startListening(): Promise<void>` | Start capturing audio from the microphone |
-| `transcribeBuffer(): Promise<string>` | Transcribe the current audio buffer while listening |
-| `stopListening(): Promise<string>` | Stop listening and transcribe final audio |
-| `stop(): void` | Stop the current transcription |
-| `unload(): void` | Unload the model and free memory |
+| `load(modelId, options?)` | Load an STT model |
+| `transcribe(audio)` | Transcribe an audio buffer |
+| `transcribeStream(audio, onToken)` | Stream transcription tokens |
+| `startListening()` | Start microphone capture |
+| `transcribeBuffer()` | Transcribe current buffer while listening |
+| `stopListening()` | Stop listening and get final transcript |
+| `stop()` | Stop transcription |
+| `unload()` | Unload model |
 
-| Property | Description |
-|----------|-------------|
-| `isLoaded: boolean` | Whether an STT model is loaded |
-| `isTranscribing: boolean` | Whether transcription is in progress |
-| `isListening: boolean` | Whether the microphone is active |
-| `modelId: string` | The currently loaded model ID |
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `isLoaded` | `boolean` | Whether an STT model is loaded |
+| `isTranscribing` | `boolean` | Whether transcription is in progress |
+| `isListening` | `boolean` | Whether the microphone is active |
+| `modelId` | `string` | Currently loaded model ID |
 
 ### ModelManager
 
+#### Methods
+
 | Method | Description |
 |--------|-------------|
-| `download(modelId: string, onProgress: (progress: number) => void): Promise<string>` | Download a model from Hugging Face |
-| `isDownloaded(modelId: string): Promise<boolean>` | Check if a model is downloaded |
-| `getDownloadedModels(): Promise<string[]>` | Get list of downloaded models |
-| `deleteModel(modelId: string): Promise<void>` | Delete a downloaded model |
-| `getModelPath(modelId: string): Promise<string>` | Get the local path of a model |
+| `download(modelId, onProgress)` | Download a model from HuggingFace |
+| `isDownloaded(modelId)` | Check if a model is downloaded |
+| `getDownloadedModels()` | Get list of downloaded model IDs |
+| `deleteModel(modelId)` | Delete a downloaded model |
+| `getModelPath(modelId)` | Get local filesystem path |
 
-| Property | Description |
-|----------|-------------|
-| `debug: boolean` | Enable debug logging |
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `debug` | `boolean` | Enable debug logging |
 
 ## Supported Models
 
-Any MLX-compatible model from Hugging Face should work. The package exports an `MLXModel` enum with pre-defined models for convenience that are more likely to run well on-device:
+Any MLX-compatible model from [mlx-community](https://huggingface.co/mlx-community) should work. The `MLXModel` enum provides pre-tested models:
 
 ```typescript
-import { MLXModel } from 'react-native-nitro-mlx'
-
-await ModelManager.download(MLXModel.Llama_3_2_1B_Instruct_4bit, (progress) => {
-  console.log(`Download progress: ${(progress * 100).toFixed(1)}%`)
-})
+import { MLXModel } from '@inferrlm/react-native-mlx'
 ```
 
 ### LLM Models
 
-| Model | Enum Key | Hugging Face ID |
-|-------|----------|-----------------|
+| Model | Enum Key | HuggingFace ID |
+|-------|----------|----------------|
 | **Llama 3.2 (Meta)** | | |
 | Llama 3.2 1B 4-bit | `Llama_3_2_1B_Instruct_4bit` | `mlx-community/Llama-3.2-1B-Instruct-4bit` |
 | Llama 3.2 1B 8-bit | `Llama_3_2_1B_Instruct_8bit` | `mlx-community/Llama-3.2-1B-Instruct-8bit` |
@@ -243,6 +343,9 @@ await ModelManager.download(MLXModel.Llama_3_2_1B_Instruct_4bit, (progress) => {
 | **Qwen 3** | | |
 | Qwen 3 1.7B 4-bit | `Qwen3_1_7B_4bit` | `mlx-community/Qwen3-1.7B-4bit` |
 | Qwen 3 1.7B 8-bit | `Qwen3_1_7B_8bit` | `mlx-community/Qwen3-1.7B-8bit` |
+| **Qwen 3.5** | | |
+| Qwen 3.5 0.8B 4-bit | `Qwen3_5_0_8B_MLX_4bit` | `mlx-community/Qwen3.5-0.8B-MLX-4bit` |
+| Qwen 3.5 0.8B 8-bit | `Qwen3_5_0_8B_MLX_8bit` | `mlx-community/Qwen3.5-0.8B-MLX-8bit` |
 | **Gemma 3 (Google)** | | |
 | Gemma 3 1B 4-bit | `Gemma_3_1B_IT_4bit` | `mlx-community/gemma-3-1b-it-4bit` |
 | Gemma 3 1B 8-bit | `Gemma_3_1B_IT_8bit` | `mlx-community/gemma-3-1b-it-8bit` |
@@ -266,8 +369,8 @@ await ModelManager.download(MLXModel.Llama_3_2_1B_Instruct_4bit, (progress) => {
 
 ### TTS Models
 
-| Model | Enum Key | Hugging Face ID |
-|-------|----------|-----------------|
+| Model | Enum Key | HuggingFace ID |
+|-------|----------|----------------|
 | **PocketTTS (Kyutai)** - 44.6M params | | |
 | PocketTTS bf16 | `PocketTTS` | `mlx-community/pocket-tts` |
 | PocketTTS 8-bit | `PocketTTS_8bit` | `mlx-community/pocket-tts-8bit` |
@@ -275,9 +378,9 @@ await ModelManager.download(MLXModel.Llama_3_2_1B_Instruct_4bit, (progress) => {
 
 ### STT Models
 
-| Model | Enum Key | Hugging Face ID |
-|-------|----------|-----------------|
-| **GLM-ASR (Alibaba)** - 1B params | | |
+| Model | Enum Key | HuggingFace ID |
+|-------|----------|----------------|
+| **GLM-ASR (Alibaba)** | | |
 | GLM-ASR Nano 4-bit | `GLM_ASR_Nano_4bit` | `mlx-community/GLM-ASR-Nano-2512-4bit` |
 
 Browse more models at [huggingface.co/mlx-community](https://huggingface.co/mlx-community).
