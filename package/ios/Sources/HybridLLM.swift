@@ -464,7 +464,6 @@ class HybridLLM: HybridLLMSpec {
             do {
                 let result = try context.tokenizer.applyChatTemplate(
                     messages: messages,
-                    addGenerationPrompt: true,
                     tools: tools,
                     additionalContext: additionalCtx
                 )
