@@ -31,7 +31,9 @@ class HybridLLM: HybridLLMSpec {
     var systemPrompt: String = "You are a helpful assistant."
     var maxTokens: Int = 2048
     var temperature: Float = 0.7
+    var enableThinking: Bool = true
     var additionalContext: LLMMessage = LLMMessage()
+    private var lastInputContainedThinkTag = false
 
     private func log(_ message: String) {
         if debug {
@@ -454,7 +456,8 @@ class HybridLLM: HybridLLMSpec {
         chat: [Chat.Message]
     ) async throws -> LMInput {
         let tools = !self.toolSchemas.isEmpty ? self.toolSchemas : nil
-        let additionalCtx: [String: any Sendable] = ["enable_thinking": true]
+        let thinkingEnabled = self.enableThinking
+        let additionalCtx: [String: any Sendable] = ["enable_thinking": thinkingEnabled]
 
         let messages: [[String: any Sendable]] = chat.map {
             ["role": $0.role.rawValue, "content": $0.content]
@@ -470,6 +473,7 @@ class HybridLLM: HybridLLMSpec {
                 self.log("template_applied token_count=\(result.count)")
                 let decoded = context.tokenizer.decode(tokens: Array(result.suffix(60)))
                 self.log("input_tail_decoded: \(decoded)")
+                self.lastInputContainedThinkTag = decoded.contains("<think>")
                 return result
             } catch {
                 self.log("template_error: \(error), retrying with fallback")
@@ -485,6 +489,7 @@ class HybridLLM: HybridLLMSpec {
                 self.log("fallback_template_applied token_count=\(result.count)")
                 let decoded = context.tokenizer.decode(tokens: Array(result.suffix(60)))
                 self.log("fallback_input_tail_decoded: \(decoded)")
+                self.lastInputContainedThinkTag = decoded.contains("<think>")
                 return result
             }
         }
@@ -534,6 +539,19 @@ class HybridLLM: HybridLLMSpec {
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let lmInput = try await prepareInput(container: container, chat: chat)
         log("perform_gen_events input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
+
+        if self.lastInputContainedThinkTag {
+            let seed = thinkingMachine.process(token: "<think>")
+            for seedOutput in seed {
+                switch seedOutput {
+                case .thinkingStart:
+                    log("thinking_seeded_events")
+                    emitter.emitThinkingStart()
+                default:
+                    break
+                }
+            }
+        }
 
         let stream = try await container.perform { context in
             let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
@@ -723,6 +741,25 @@ class HybridLLM: HybridLLMSpec {
         let chat = buildChatMessages(prompt: prompt, toolResults: toolResults, depth: depth)
         let lmInput = try await prepareInput(container: container, chat: chat)
         log("perform_gen input_prepared messages=\(chat.count) maxTokens=\(self.maxTokens) temperature=\(self.temperature)")
+
+        /*
+         When the chat template injects <think> at the end of the prompt,
+         the model generates thinking content directly — the opening tag
+         is NOT part of the generated stream. Seed the state machine so
+         the TS layer receives <think> and sets isThinking = true.
+        */
+        if self.lastInputContainedThinkTag {
+            let seed = thinkingMachine.process(token: "<think>")
+            for seedOutput in seed {
+                switch seedOutput {
+                case .thinkingStart:
+                    log("thinking_seeded")
+                    onToken("<think>")
+                default:
+                    break
+                }
+            }
+        }
 
         let stream = try await container.perform { context in
             let parameters = GenerateParameters(maxTokens: self.maxTokens, temperature: Float(self.temperature))
