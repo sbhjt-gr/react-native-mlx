@@ -66,6 +66,34 @@ class HybridLLM: HybridLLMSpec {
                      allocatedMB, cacheMB, peakMB)
     }
 
+    private func parseEosTokenIds(from modelDir: URL) -> Set<Int> {
+        let configURL = modelDir.appendingPathComponent("config.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [] }
+
+        if let ids = extractEosIds(from: json) {
+            return ids
+        }
+
+        if let textConfig = json["text_config"] as? [String: Any],
+           let ids = extractEosIds(from: textConfig) {
+            return ids
+        }
+
+        return []
+    }
+
+    private func extractEosIds(from dict: [String: Any]) -> Set<Int>? {
+        if let id = dict["eos_token_id"] as? Int {
+            return [id]
+        }
+        if let ids = dict["eos_token_id"] as? [Int], !ids.isEmpty {
+            return Set(ids)
+        }
+        return nil
+    }
+
     private func buildToolSchema(from tool: ToolDefinition) -> ToolSpec {
         var properties: [String: [String: Any]] = [:]
         var required: [String] = []
@@ -124,6 +152,22 @@ class HybridLLM: HybridLLMSpec {
                 }
 
                 try Task.checkCancellation()
+
+                /*
+                 mlx-swift-lm only reads top-level eos_token_id from config.json.
+                 Models like Qwen3.5 nest it inside text_config, leaving the stop
+                 set empty. Parse it ourselves and patch the container.
+                */
+                let containerEos = await loadedContainer.configuration.eosTokenIds
+                if containerEos.isEmpty {
+                    let parsed = self.parseEosTokenIds(from: modelDir)
+                    if !parsed.isEmpty {
+                        log("Patching eosTokenIds from config: \(parsed)")
+                        await loadedContainer.update { ctx in
+                            ctx.configuration.eosTokenIds = parsed
+                        }
+                    }
+                }
 
                 let memoryAfterContainer = self.getMemoryUsage()
                 let gpuAfterContainer = self.getGPUMemoryUsage()
