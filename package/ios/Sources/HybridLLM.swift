@@ -195,6 +195,13 @@ class HybridLLM: HybridLLMSpec {
                     log("EOS patched - ids: \(updated), extra: \(updatedExtra)")
                 }
 
+                if isJANG(at: modelDir) {
+                    await loadedContainer.update { ctx in
+                        patchJANG(model: ctx.model as! Module, at: modelDir)
+                    }
+                    log("jang_patched")
+                }
+
                 let memoryAfterContainer = self.getMemoryUsage()
                 let gpuAfterContainer = self.getGPUMemoryUsage()
                 log("Model loaded - Host: \(memoryAfterContainer), GPU: \(gpuAfterContainer)")
